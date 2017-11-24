@@ -1,3 +1,4 @@
+//TODO: unify piece, player, and victory
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Piece {
     Empty,
@@ -5,12 +6,13 @@ pub enum Piece {
     O,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Player {
     X,
     O
 }
 
+#[derive(Copy)]
 pub struct BoardState {
     board: [[Piece; 3]; 3],
     pub turn: Player,
@@ -56,6 +58,16 @@ impl std::fmt::Display for BoardState {
     }
 }
 
+impl Clone for BoardState {
+    fn clone(&self) -> BoardState {
+        BoardState {
+            board : self.board.clone(),
+            turn : self.turn.clone(),
+            victor : self.victor.clone()
+        }
+    }
+}
+
 impl BoardState {
     pub fn new_board() -> BoardState{
         let board = [[Piece::Empty; 3]; 3];
@@ -76,7 +88,7 @@ impl BoardState {
         legal
     }
 
-    pub fn make_move(&self, coord: (usize, usize)) -> Option<BoardState>{
+    pub fn make_move(&self, coord: &(usize, usize)) -> Option<BoardState>{
         let pos = &self.board[coord.0][coord.1];
         if let Piece::Empty = self.board[coord.0][coord.1] {
             let mut new_board = self.board.clone();
@@ -133,31 +145,84 @@ impl BoardState {
     }
 }
 
-struct GameTree {
+pub struct GameTree {
     children: Vec<Box<GameTree>>,
+    play: Option<(usize, usize)>,
     state: BoardState,
 }
 
+fn comp_hack(v: &(Vec<Option<(usize, usize)>>, Option<Player>)) -> i32 {
+    match v.1 {
+        None => 0,
+        Some(p) => match p {
+            Player::X => 1,
+            Player::O => -1
+        }
+    }
+}
+
 impl GameTree {
-    fn new(state: BoardState) -> GameTree {
+    pub fn new(state: BoardState, play: Option<(usize, usize)>) -> GameTree {
         let children = Vec::with_capacity(4);
         GameTree {
             state,
+            play,
             children
         }
     }
-    /*
-    fn search(&self) -> ((usize, usize), Option<Player>) {
-        if self.children.len() == 0 {
-            self.children = {
-                self.state.legal_moves()
-                    .map( |move| {
-                        let state = 
 
-                    });
-            }
-
+    pub fn determine_move(&mut self) -> Option<(usize, usize)> {
+        let branch = self.search().0;
+        match branch.get(1) {
+            None => None,
+            Some(b) => *b
         }
     }
-    */
+
+    fn search(&mut self) -> (Vec<Option<(usize, usize)>>, Option<Player>) {
+        if let Some(p) = self.state.victor {
+            //TODO: bet this doesn't work
+            let moves = vec![self.play];
+            return (moves, Some(p))
+        }
+        if self.children.len() == 0 {
+            let result: Vec<_> = {
+                self.state.legal_moves()
+                    .iter()
+                    .map( |play| {
+                        let state = self.state.make_move(play).unwrap();
+                        Box::new(GameTree::new(state, Some(*play)))
+                    })
+                   .collect()
+            };
+            self.children.extend(result);
+        }
+
+        let mut ordered = Vec::new();
+        for i in 0..self.children.len() {
+            ordered.push(self.children[i].search())
+        }
+
+        ordered.sort_unstable_by_key(comp_hack);
+        let mut result = match self.state.turn {
+            Player::X => ordered.last(),
+            Player::O => ordered.first()
+        };
+
+        //no legal moves left
+        match result {
+            None => {
+                let moves = vec![self.play];
+                return (moves, None)
+            },
+            Some(p) => {
+                //this is bad
+                let mut p_copy = p.clone();
+                if let Some(this_play) = self.play {
+                    p_copy.0.push(Some(this_play));
+                }
+                return p_copy
+            }
+        }
+    }
 }
