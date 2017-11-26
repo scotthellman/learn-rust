@@ -138,29 +138,47 @@ impl BoardState {
     }
 
     fn check_victory(&self, coord: &(usize, usize), dir: &(i32, i32)) -> Outcome {
+        //find start
         let mut start = (coord.0 as i32, coord.1 as i32);
-        while start.0 != 0 && start.1 != 0  && start.0 < 2 && start.1 < 2 {
-            start.0 -= dir.0;
-            start.1 -= dir.1;
-        }
-        let start = start;
-        let mut start_val = self.board[start.0 as usize][start.1 as usize];
-        for i in 1..3 {
-            let new_x = start.0 + dir.0 * i;
-            let new_y = start.1 + dir.1 * i;
-            if new_x >= 3 || new_y >= 3  || new_x < 0 || new_y < 0 {
-                return Outcome::Draw
+        if dir.0 != 0 {
+            let mut projected = start.0;
+            loop {
+                let new_projected = projected - dir.0;
+                if new_projected < 0 || new_projected > 2{
+                    break;
+                }
+                projected = new_projected;
             }
-            let new_val = self.board[new_x as usize][new_y as usize];
-            if start_val != new_val {
-                start_val = Piece::Empty;
+            start.0 = projected;
+        }
+        if dir.1 != 0 {
+            let mut projected = start.1;
+            loop {
+                let new_projected =  projected - dir.1;
+                if new_projected < 0 || new_projected > 2{
+                    break;
+                }
+                projected = new_projected;
+            }
+            start.1 = projected;
+        }
+        let cells : Vec<(usize, usize)> = (0..3).map(|i| (start.0 + i * dir.0, start.1 + i * dir.1))
+            .filter(|&(x,y)| x >= 0 && x < 3 && y >= 0 && y < 3)
+            .map(|(x,y)| (x as usize, y as usize))
+            .collect();
+        if cells.len() != 3 {
+            return Outcome::Draw
+        }
+        let values : Vec<_> = cells.iter().map(|&(x,y)| self.board[x][y]).collect();
+        let prospective_winner = values[0];
+        if values.iter().all(|&x| x == prospective_winner) {
+            return match prospective_winner {
+                Piece::X => Outcome::X,
+                Piece::O => Outcome::O,
+                Piece::Empty => Outcome::Draw
             }
         }
-        match start_val {
-            Piece::Empty => Outcome::Draw,
-            Piece::X => Outcome::X,
-            Piece::O => Outcome::O
-        }
+        Outcome::Draw
     }
 }
 
@@ -181,11 +199,7 @@ impl GameTree {
     }
 
     pub fn determine_move(&mut self) -> Option<(usize, usize)> {
-        println!("{}", "New search happening here\n\n\n");
-        println!("Starting board:\n{}", self.state);
         let (branch, result) = self.search();
-        println!("path is {:?}", branch);
-        println!("we chose {:?} leading to {:?}",branch.last(), result);
         match branch.last() {
             None => None,
             Some(b) => *b
@@ -194,8 +208,6 @@ impl GameTree {
 
     fn search(&mut self) -> (Vec<Option<(usize, usize)>>, Outcome) {
         if self.state.ended {
-            println!("terminal state:\n{}", self.state);
-            println!("with victor: {:?}\n\n", self.state.victor);
             let moves = vec![self.play];
             return (moves, self.state.victor)
         }
@@ -223,7 +235,6 @@ impl GameTree {
             Player::O => ordered.first()
         };
 
-
         match result {
             //no legal moves left
             //i believe this is never hit?
@@ -233,10 +244,6 @@ impl GameTree {
             },
             Some(p) => {
                 //this is bad
-                println!("{}",self.state);
-                println!("Playing as {:?}", self.state.turn);
-                println!("best move was {:?}",p.0);
-                println!("leading to {:?}",p.1);
                 let mut p_copy = p.clone();
                 if let Some(this_play) = self.play {
                     p_copy.0.push(Some(this_play));
